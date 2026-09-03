@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "andersdosen.imdbsearch",
+  "name": "IMDb Search",
+  "version": "1.0.0",
+  "author": "Anders Døsen",
+  "license": "MIT",
+  "description": "Search movies and TV shows and get a ready-made Title (Year) [imdbid-ttXXXXXXX] folder name",
+  "languages": ["en", "nb", "de", "fr", "es", "pt", "sv", "it", "fi"],
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "IMDb",
+    "description": "Search movies and TV shows, then open a result or copy its folder name",
+    "category": "Utilities",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
