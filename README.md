@@ -75,15 +75,14 @@ adding new languages are welcome.
 
 The `de`, `fr`, `es`, `pt`, `sv`, `it`, and `fi` translations are
 AI-generated and haven't been reviewed by a native speaker, so wording
-may be imperfect. Corrections and new languages are welcome as pull
-requests.
+may be imperfect. Corrections are welcome as pull requests.
 
 ## Theming
 
 Colors, fonts, and spacing all follow your active Omarchy theme — the
 panel reads the same bar foreground color, accent, and font as the rest
-of the shell, so it re-themes automatically when you switch themes with
-`omarchy theme set <name>`, no restart needed. Same search, three themes:
+of the shell, so it re-themes automatically when you switch themes, no
+restart needed. Same search, three themes:
 
 <table>
 <tr>
