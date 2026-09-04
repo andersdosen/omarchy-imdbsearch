@@ -31,22 +31,13 @@ result, or `↓` from the button, returns to typing.
 Requires Omarchy 4 or later (the plugin system this relies on isn't
 available in earlier versions).
 
-**Option 1 — `omarchy plugin add` (recommended):**
-
 ```bash
 omarchy plugin add https://github.com/andersdosen/omarchy-imdbsearch.git --enable
 ```
 
 You'll be prompted to pick a bar section (left/center/right) for the icon.
 
-**Option 2 — manual clone:**
-
-```bash
-git clone https://github.com/andersdosen/omarchy-imdbsearch.git ~/.config/omarchy/plugins/andersdosen.imdbsearch
-omarchy plugin enable andersdosen.imdbsearch --section right
-```
-
-Either way, the shell picks up the plugin without a restart — edits under
+The shell picks up the plugin without a restart — edits under
 `~/.config/omarchy/plugins/` hot-reload automatically.
 
 ## How it works
