@@ -9,7 +9,7 @@ Click the bar icon, type at least 2 characters, and the top 5 matches
 appear with poster, title, year, and folder name, with an "Open search
 results on IMDb.com" link below the search results.
 
-[![Search results for "Friday Night Lights"](docs/preview.png)](docs/preview.png)
+[![IMDb Search for Omarchy — search movies and TV shows from the bar and get ready-made folder names, shown here searching for "Friday Night Lights"](preview.png)](preview.png)
 
 The `?` icon in the top-right corner of the panel toggles a reminder of
 the mouse and keyboard shortcuts below the search field.
@@ -86,7 +86,7 @@ restart needed. Same search, three themes:
 
 <table>
 <tr>
-<td align="center"><a href="docs/preview.png"><img src="docs/preview.png" alt="Ethereal theme" width="260"></a><br>Ethereal <small>by Bjarne Øverli</small></td>
+<td align="center"><a href="docs/preview-ethereal.png"><img src="docs/preview-ethereal.png" alt="Ethereal theme" width="260"></a><br>Ethereal <small>by Bjarne Øverli</small></td>
 <td align="center"><a href="docs/preview-diablo-dreams.png"><img src="docs/preview-diablo-dreams.png" alt="Diablo Dreams theme" width="260"></a><br><a href="https://github.com/dhh/omarchy-diablo-dreams-theme">Diablo Dreams</a> <small>by DHH</small></td>
 <td align="center"><a href="docs/preview-solitude.png"><img src="docs/preview-solitude.png" alt="Solitude theme" width="260"></a><br><a href="https://github.com/HANCORE-linux/omarchy-solitude-theme">Solitude</a> <small>by HANCORE</small></td>
 </tr>
