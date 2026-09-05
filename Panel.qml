@@ -99,6 +99,14 @@ Panel {
     onTriggered: root.copiedImdbId = ""
   }
 
+  // The suggest response is unauthenticated third-party content; before it's
+  // ever handed to Image as a source, require it actually points at an IMDb
+  // poster CDN host over https, not e.g. file:// or an arbitrary http(s)
+  // host a compromised/MITM'd response could substitute.
+  function isTrustedPosterUrl(url) {
+    return /^https:\/\/([a-z0-9-]+\.)*(media-amazon\.com|media-imdb\.com)\//i.test(String(url || ""))
+  }
+
   // IMDb's poster CDN accepts a size suffix in place of the plain "._V1_"
   // marker; without it a poster is a multi-megabyte full-res image, which
   // is wasteful for a 46x68 thumbnail. Falls back to the original URL
@@ -210,7 +218,7 @@ Panel {
                 Title: String(e.l || ""),
                 Year: e.y ? String(e.y) : "",
                 imdbID: String(e.id),
-                Poster: e.i && e.i[0] ? root.thumbUrl(e.i[0]) : "N/A"
+                Poster: e.i && e.i[0] && root.isTrustedPosterUrl(e.i[0]) ? root.thumbUrl(e.i[0]) : "N/A"
               })
             }
             root.results = mapped
