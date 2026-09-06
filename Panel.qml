@@ -132,6 +132,16 @@ Panel {
   readonly property string cacheHome: Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")
   readonly property string posterCacheDir: root.cacheHome + "/omarchy-imdbsearch/posters"
   readonly property string fetchPosterHelper: Qt.resolvedUrl("fetch-poster").toString().replace(/^file:\/\//, "")
+  readonly property string fetchSuggestHelper: Qt.resolvedUrl("fetch-suggest").toString().replace(/^file:\/\//, "")
+
+  // root.results is a plain array, so every completed search rebuilds
+  // every ResultRow delegate from scratch (Repeater can't diff a plain
+  // array the way it can a ListModel) — without this, the same imdbID
+  // appearing across searches (typing "bat" -> "batm") would respawn a
+  // fetch-poster process each time, even though the previous fetch already
+  // proved the file is cached on disk. Keyed by imdbID, persists across
+  // rebuilds since it lives on root rather than a row.
+  property var posterCacheKnownGood: ({})
 
   function posterCachePath(imdbID) {
     return root.posterCacheDir + "/" + String(imdbID || "") + ".jpg"
@@ -208,7 +218,13 @@ Panel {
     // content regardless of what's there, so a constant "_" works for any
     // query including ones starting with digits or punctuation.
     var url = "https://sg.media-imdb.com/suggests/_/" + encodeURIComponent(root.activeQuery.toLowerCase()) + ".json"
-    searchProc.command = ["curl", "-sS", "--max-time", "8", url]
+    // fetch-suggest enforces a hard byte cap on the actual downloaded bytes
+    // (not just a declared Content-Length), plus a response-status and
+    // content-type check, before any of the body reaches this process —
+    // the regex/JSONP-unwrap/JSON.parse below only ever runs over a small,
+    // validated body. See fetch-poster for the same pattern applied to
+    // poster downloads.
+    searchProc.command = [root.fetchSuggestHelper, url]
     searchProc.running = true
   }
 
@@ -523,19 +539,33 @@ Panel {
       posterFetchProc.running = false
       if (!row.item || !row.item.Poster || row.item.Poster === "N/A") return
       var outPath = root.posterCachePath(row.item.imdbID)
+      // Already proven cached by an earlier fetch this session — skip
+      // spawning fetch-poster (a bash+curl process) entirely.
+      if (root.posterCacheKnownGood[row.item.imdbID]) {
+        row.localPosterPath = "file://" + outPath
+        return
+      }
       posterFetchProc.command = [root.fetchPosterHelper, row.item.Poster, outPath]
       posterFetchProc.__outPath = outPath
+      posterFetchProc.__imdbID = row.item.imdbID
       posterFetchProc.running = true
     }
 
+    // item: modelData at the call site already assigns a value during
+    // construction, which fires this same onItemChanged — a separate
+    // Component.onCompleted call here was spawning, then immediately
+    // killing and respawning, an identical fetch-poster process per row.
     onItemChanged: row.startPosterFetch()
-    Component.onCompleted: row.startPosterFetch()
 
     Process {
       id: posterFetchProc
       property string __outPath: ""
+      property string __imdbID: ""
       onExited: function(exitCode) {
-        if (exitCode === 0) row.localPosterPath = "file://" + posterFetchProc.__outPath
+        if (exitCode === 0) {
+          row.localPosterPath = "file://" + posterFetchProc.__outPath
+          root.posterCacheKnownGood[posterFetchProc.__imdbID] = true
+        }
       }
     }
 

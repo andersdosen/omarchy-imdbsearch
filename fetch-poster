@@ -62,7 +62,19 @@ while :; do
     exit 1
   fi
 
-  code=$(printf '%s\n' "$headers" | awk 'NR==1{print $2}')
+  # One awk pass over the headers extracts the status code, Location, and
+  # Content-Type together (values read back via `read`, never `eval`'d, so
+  # an attacker-controlled header value can't run as shell code) — a
+  # separate printf|awk and printf|tr|awk pipeline per field here ran once
+  # per redirect hop (up to max_redirects) on every poster fetch.
+  { read -r code; read -r location; read -r content_type; } < <(
+    printf '%s\n' "$headers" | tr -d '\r' | awk '
+      NR==1                           { print $2; next }
+      tolower($0) ~ /^location:/      { sub(/^[^:]*:[ \t]*/, ""); loc = $0 }
+      tolower($0) ~ /^content-type:/  { sub(/^[^:]*:[ \t]*/, ""); ct = tolower($0) }
+      END                             { print loc; print ct }
+    '
+  )
 
   case "$code" in
     301|302|303|307|308)
@@ -71,7 +83,6 @@ while :; do
         echo "fetch-poster: too many redirects" >&2
         exit 1
       fi
-      location=$(printf '%s\n' "$headers" | tr -d '\r' | awk -F': ' 'tolower($1)=="location"{print $2; exit}')
       # IMDb's CDN always sends absolute https redirects in practice; a
       # relative or non-https Location is treated as invalid rather than
       # resolved, so the host check above always sees the real target.
@@ -83,7 +94,6 @@ while :; do
       continue
       ;;
     200)
-      content_type=$(printf '%s\n' "$headers" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print tolower($2); exit}')
       case "$content_type" in
         image/*) ;;
         *)

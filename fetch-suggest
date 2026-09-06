@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Fetches the IMDb suggestion endpoint to stdout under a hard byte cap, with
+# a response-status and content-type check, before any of the body ever
+# reaches Panel.qml's regex/JSONP-unwrap/JSON.parse pipeline. A single
+# "curl -sS" call left that pipeline to run over whatever a fast or
+# streaming, arbitrarily large response handed it — this mirrors
+# fetch-poster's approach to the same problem for poster images.
+set -uo pipefail
+
+max_bytes=65536       # real responses run 1-2KB even for broad queries
+timeout=8
+host_re='^https://sg\.media-imdb\.com/suggests/'
+
+usage() { echo "usage: $(basename "$0") <url>" >&2; exit 2; }
+[[ $# -eq 1 ]] || usage
+url=$1
+
+if ! [[ "$url" =~ $host_re ]]; then
+  echo "fetch-suggest: refusing untrusted host: $url" >&2
+  exit 1
+fi
+
+tmp=$(mktemp)
+cleanup() { rm -f "$tmp"; }
+trap cleanup EXIT
+
+# -D- dumps response headers to stdout (captured below); -o writes the body
+# to $tmp, capped by --max-filesize against the actual downloaded bytes as
+# they arrive, not just a declared Content-Length — so a server that lies
+# about (or omits) its size, or streams an unbounded chunked body, is still
+# bounded well before it reaches the caller. Redirects are not followed (no
+# -L): the URL is built entirely from a fixed, known host, so a redirect
+# response is simply rejected below by the status check rather than chased
+# anywhere new.
+headers=$(curl -sS \
+  --max-time "$timeout" \
+  --max-filesize "$max_bytes" \
+  -D - -o "$tmp" \
+  "$url")
+status=$?
+
+if [[ $status -ne 0 ]]; then
+  echo "fetch-suggest: curl failed (exit $status)" >&2
+  exit 1
+fi
+
+code=$(printf '%s\n' "$headers" | awk 'NR==1{print $2}')
+if [[ "$code" != "200" ]]; then
+  echo "fetch-suggest: unexpected HTTP status: $code" >&2
+  exit 1
+fi
+
+content_type=$(printf '%s\n' "$headers" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print tolower($2); exit}')
+case "$content_type" in
+  application/javascript*|text/javascript*|application/json*) ;;
+  *)
+    echo "fetch-suggest: unexpected content-type: $content_type" >&2
+    exit 1
+    ;;
+esac
+
+# Belt-and-suspenders check on the actual bytes written, independent of
+# whether this curl build/protocol path honors --max-filesize.
+size=$(stat -c%s "$tmp" 2>/dev/null || wc -c <"$tmp")
+if (( size > max_bytes )); then
+  echo "fetch-suggest: response exceeded byte cap" >&2
+  exit 1
+fi
+
+cat "$tmp"
