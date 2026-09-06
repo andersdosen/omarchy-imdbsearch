@@ -88,10 +88,11 @@ restart needed. Same search, three themes:
 - Search queries go to `sg.media-imdb.com`; title metadata comes back from
   IMDb's public suggest endpoint.
 - Posters load from IMDb's own image CDN (`m.media-amazon.com`), resized
-  to a small thumbnail.
+  to a small thumbnail, and are cached to disk under
+  `$XDG_CACHE_HOME/omarchy-imdbsearch/posters/` (`~/.cache/...` if unset)
+  so a repeat search doesn't re-fetch them.
 - Opening a result uses your default browser (`omarchy-launch-browser`);
-  copying a folder name uses `wl-copy`. This plugin doesn't write
-  anything to disk.
+  copying a folder name uses `wl-copy`.
 - Not affiliated with, endorsed by, or sponsored by IMDb.com, Inc. or
   Amazon.
 
