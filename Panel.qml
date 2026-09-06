@@ -101,19 +101,47 @@ Panel {
 
   // The suggest response is unauthenticated third-party content; before it's
   // ever handed to Image as a source, require it actually points at an IMDb
-  // poster CDN host over https, not e.g. file:// or an arbitrary http(s)
-  // host a compromised/MITM'd response could substitute.
+  // poster CDN host over https (not e.g. file:// or an arbitrary http(s)
+  // host a compromised/MITM'd response could substitute) AND already
+  // carries the plain "._V1_" size marker. That marker is what thumbUrl()
+  // rewrites into a bounded thumbnail suffix below, so requiring it here
+  // means a URL that passes this check can always be capped to a small
+  // decoded/downloaded size — there's no case where a "trusted host" URL
+  // without the marker falls through and hands Image an unbounded,
+  // multi-megabyte full-res original.
   function isTrustedPosterUrl(url) {
-    return /^https:\/\/([a-z0-9-]+\.)*(media-amazon\.com|media-imdb\.com)\//i.test(String(url || ""))
+    return /^https:\/\/([a-z0-9-]+\.)*(media-amazon\.com|media-imdb\.com)\/.*\._V1_\./i.test(String(url || ""))
   }
 
-  // IMDb's poster CDN accepts a size suffix in place of the plain "._V1_"
-  // marker; without it a poster is a multi-megabyte full-res image, which
-  // is wasteful for a 46x68 thumbnail. Falls back to the original URL
-  // untouched if the marker isn't there.
+  // Rewrites the "._V1_" size marker into a fixed small-size suffix.
+  // Only ever called after isTrustedPosterUrl() has confirmed the marker
+  // is present, so this always succeeds in bounding the image.
   function thumbUrl(url) {
     return String(url || "").replace("._V1_.", "._V1_UX140_.")
   }
+
+  // ---------- poster fetching ----------
+
+  // A same-host, same-marker thumbnail URL is still someone else's
+  // response: sourceSize alone bounds decoded pixels, not the bytes an
+  // Image.source fetch will read off the wire, and QML's own network
+  // fetch has no byte cap, content-type check, or redirect revalidation
+  // of its own. Posters are instead pulled through fetch-poster, a
+  // helper that enforces all of that, into a small local cache; only the
+  // resulting local file ever reaches Image.source.
+  readonly property string cacheHome: Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")
+  readonly property string posterCacheDir: root.cacheHome + "/omarchy-imdbsearch/posters"
+  readonly property string fetchPosterHelper: Qt.resolvedUrl("fetch-poster").toString().replace(/^file:\/\//, "")
+
+  function posterCachePath(imdbID) {
+    return root.posterCacheDir + "/" + String(imdbID || "") + ".jpg"
+  }
+
+  Process {
+    id: posterCacheDirProc
+    command: ["mkdir", "-p", root.posterCacheDir]
+  }
+  Component.onCompleted: posterCacheDirProc.running = true
 
   // ---------- keyboard selection ----------
 
@@ -485,6 +513,32 @@ Panel {
 
     implicitHeight: Math.max(poster.height, textCol.implicitHeight) + Style.space(10)
 
+    // Populated once fetch-poster has downloaded and validated the poster
+    // into the local cache; empty (no image shown) until then or if the
+    // fetch fails.
+    property string localPosterPath: ""
+
+    function startPosterFetch() {
+      row.localPosterPath = ""
+      posterFetchProc.running = false
+      if (!row.item || !row.item.Poster || row.item.Poster === "N/A") return
+      var outPath = root.posterCachePath(row.item.imdbID)
+      posterFetchProc.command = [root.fetchPosterHelper, row.item.Poster, outPath]
+      posterFetchProc.__outPath = outPath
+      posterFetchProc.running = true
+    }
+
+    onItemChanged: row.startPosterFetch()
+    Component.onCompleted: row.startPosterFetch()
+
+    Process {
+      id: posterFetchProc
+      property string __outPath: ""
+      onExited: function(exitCode) {
+        if (exitCode === 0) row.localPosterPath = "file://" + posterFetchProc.__outPath
+      }
+    }
+
     Rectangle {
       anchors.fill: parent
       radius: Style.cornerRadius
@@ -519,9 +573,14 @@ Panel {
       Image {
         id: posterImg
         anchors.fill: parent
-        source: row.item && row.item.Poster && row.item.Poster !== "N/A" ? row.item.Poster : ""
+        source: row.localPosterPath
         asynchronous: true
         fillMode: Image.PreserveAspectCrop
+        // Decode is capped independently of the (already byte-capped)
+        // source file, at 2x the display box for HiDPI without ever
+        // decoding at the original's full resolution.
+        sourceSize.width: poster.width * 2
+        sourceSize.height: poster.height * 2
         visible: status === Image.Ready
       }
     }

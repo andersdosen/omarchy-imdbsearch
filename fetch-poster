@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Fetches an IMDb poster thumbnail to a local file under a hard byte cap,
+# with a content-type check, a timeout, and host revalidation on every
+# redirect hop. The poster URL is unauthenticated third-party content, so
+# none of this can be delegated to a single "curl -L" call that would
+# trust whatever a compromised/MITM'd response redirects it to next, or
+# let the response declare its own size.
+set -uo pipefail
+
+max_bytes=102400      # 100KiB: a UX140 thumbnail runs a few KB to ~10KB, so this still leaves ample headroom
+max_redirects=5
+per_request_timeout=8
+overall_timeout=15
+host_re='^https://([a-z0-9-]+\.)*(media-amazon\.com|media-imdb\.com)/'
+
+usage() { echo "usage: $(basename "$0") <url> <output-path>" >&2; exit 2; }
+[[ $# -eq 2 ]] || usage
+
+url=$1
+out=$2
+tmp="$out.part"
+
+# Already cached from an earlier fetch — poster bytes for a given IMDb
+# title/URL don't change, so there's nothing to revalidate.
+[[ -s "$out" ]] && exit 0
+
+cleanup() { rm -f "$tmp"; }
+trap cleanup EXIT
+
+start_ts=$(date +%s)
+redirect_count=0
+
+while :; do
+  if (( $(date +%s) - start_ts >= overall_timeout )); then
+    echo "fetch-poster: overall timeout exceeded" >&2
+    exit 1
+  fi
+
+  if ! [[ "$url" =~ $host_re ]]; then
+    echo "fetch-poster: refusing untrusted host: $url" >&2
+    exit 1
+  fi
+
+  rm -f "$tmp"
+  # -D- dumps response headers to stdout (captured below); -o writes the
+  # body to $tmp. --max-filesize enforces the byte cap against the actual
+  # downloaded bytes as they arrive, not just a declared Content-Length,
+  # so a server that lies about (or omits) its size is still bounded.
+  # --max-redirs 0 disables curl's own redirect following: each hop is
+  # handled manually below so its target host can be revalidated before
+  # it's ever requested.
+  headers=$(curl -sS \
+    --max-time "$per_request_timeout" \
+    --max-filesize "$max_bytes" \
+    --max-redirs 0 \
+    -D - -o "$tmp" \
+    "$url")
+  status=$?
+
+  if [[ $status -ne 0 ]]; then
+    echo "fetch-poster: curl failed (exit $status)" >&2
+    exit 1
+  fi
+
+  code=$(printf '%s\n' "$headers" | awk 'NR==1{print $2}')
+
+  case "$code" in
+    301|302|303|307|308)
+      redirect_count=$((redirect_count + 1))
+      if (( redirect_count > max_redirects )); then
+        echo "fetch-poster: too many redirects" >&2
+        exit 1
+      fi
+      location=$(printf '%s\n' "$headers" | tr -d '\r' | awk -F': ' 'tolower($1)=="location"{print $2; exit}')
+      # IMDb's CDN always sends absolute https redirects in practice; a
+      # relative or non-https Location is treated as invalid rather than
+      # resolved, so the host check above always sees the real target.
+      if ! [[ "$location" =~ ^https:// ]]; then
+        echo "fetch-poster: refusing non-absolute/non-https redirect" >&2
+        exit 1
+      fi
+      url=$location
+      continue
+      ;;
+    200)
+      content_type=$(printf '%s\n' "$headers" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print tolower($2); exit}')
+      case "$content_type" in
+        image/*) ;;
+        *)
+          echo "fetch-poster: unexpected content-type: $content_type" >&2
+          exit 1
+          ;;
+      esac
+      size=$(stat -c%s "$tmp" 2>/dev/null || wc -c <"$tmp")
+      if (( size > max_bytes )); then
+        echo "fetch-poster: response exceeded byte cap" >&2
+        exit 1
+      fi
+      mv "$tmp" "$out"
+      trap - EXIT
+      exit 0
+      ;;
+    *)
+      echo "fetch-poster: unexpected HTTP status: $code" >&2
+      exit 1
+      ;;
+  esac
+done
